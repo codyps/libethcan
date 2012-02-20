@@ -15,9 +15,9 @@ typedef struct ecan_connection_t ecan_connection_t;
 /* wrapper for ecan_create which also creates the socket.
  * @hostname: can also be an ip address (as a string).
  * @port:     if zero, default is used. */
-ecan_connection_t *ecan_open(char *hostname, uint16_t port);
-ecan_connection_t *ecan_create(int udp_sock_fd);
-void               ecan_destroy(ecan_connection_t *ei);
+ecan_connection_t *ecan_connect(char *hostname, uint16_t port);
+ecan_connection_t *ecan_connect_to_fd(int udp_sock_fd);
+void               ecan_disconnect(ecan_connection_t *ei);
 
 /*! @defgroup CAN ID managment.
  * @{*/
