@@ -17,14 +17,14 @@ endif
 
 LIBNAME = libethcan
 LIBOBJ  = ethcan.o
-$(LIBNAME).so : $(LIBOBJ)
-$(LIBNAME).a  : $(LIBOBJ)
 
 all : dynamic static
 
 .PHONY: dynamic static
 dynamic : $(LIBNAME).so
 static  : $(LIBNAME).a
+$(LIBNAME).so : $(LIBOBJ)
+$(LIBNAME).a  : $(LIBOBJ)
 
 .SECONDARY:
 
