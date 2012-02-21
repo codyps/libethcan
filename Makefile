@@ -39,7 +39,7 @@ clean :
 	$(QUIET_CCLD)$(CCLD) $(CFLAGS) $(LDFLAGS) -shared -o $@ $^
 
 %.a   :
-	$(QUIET_AR)$(AR) rcsD $^
+	$(QUIET_AR)$(AR) rcsD $@ $^
 
 %.elf :
 	$(QUIET_LD)$(CCLD) $(CFLAGS) $(LDFLAGS) -o $@ $^
