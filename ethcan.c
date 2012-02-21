@@ -1,5 +1,5 @@
-#include <pthreads.h>
-
+#include <pthread.h>
+#include <stdlib.h>
 #include "ethcan.h"
 
 #define ECAN_QUEUE_IN_SIZE  4096
@@ -35,7 +35,7 @@ static void _ecan_in_destroy(_ecan_in *in)
 	return;
 }
 
-struct ecan_connection {
+struct ecan_connection_t {
 	int fd;
 
 	pthread_mutex_t iolock;

@@ -1,12 +1,16 @@
 #ifndef ETHCAN_H_
 #define ETHCAN_H_
 
+#include <stdint.h>
+#include <unistd.h> /* ssize_t */
+
 /*! @file ethcan.h
  *
  *  Interface for interacting with the Ethercan/2.
  */
 
 typedef struct ecan_connection_t ecan_connection_t;
+typedef struct ecan_reply_t ecan_reply_t;
 
 /*! defgroup ECAN instance setup
  * @{
@@ -31,7 +35,7 @@ int  ecan_canid_add_range(ecan_connection_t *c,
 /* wrapper for ecan_canid_add_range */
 static inline int  ecan_canid_add(ecan_connection_t *c, uint32_t can_id)
 {
-	return ecan_canid_add_range(ei, can_id, can_id);
+	return ecan_canid_add_range(c, can_id, can_id);
 }
 
 /*!@}*/
@@ -42,6 +46,8 @@ int ecan_send_to_can(ecan_connection_t *c, uint32_t can_id, void *in_buf, size_t
 ssize_t ecan_recv_from_can(ecan_connection_t *c, void *out_buf, size_t bytes);
 /*!@}*/
 
-void ecan_flush(ecan_con
+
+void ecan_flush(ecan_connection_t *c);
+ecan_reply_t ecan_wait_for_reply(ecan_connection_t *c);
 
 #endif
