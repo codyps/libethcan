@@ -15,8 +15,9 @@
 # define __bitwise
 #endif
 
-/* network byte order for all items. */
+#define __packed __attribute__((packed))
 
+/* network byte order for all items. */
 struct ellsi_header {
 	uint32_t magic;
 #define ELLSI_MAGIC 0x454c5349
@@ -35,7 +36,7 @@ struct ellsi_header {
 	uint32_t payload_bytes;
 	uint32_t subcommand; /**< one of ELLSI_SUBCMD_* or ELLSI_IOCTL_* */
 	uint8_t  reserved[32];
-} __attribute__((packed,align));
+} __packed;
 
 #define ELLSI_CMD_NOP          0
 #define ELLSI_CMD_CAN_TELEGRAM 1
@@ -81,7 +82,7 @@ typedef ellsi_register_x {
 	  prior to sending to client.  default = 0. Noted as not implimented in
 	  manual version 1.5 (2010-02-22). */
 	uint32_t reserved[8];
-};
+} __packed;
 
 
 /* with command = ELLSI_CMD_CAN_TELEGRAM
@@ -94,7 +95,7 @@ struct ellsi_can_gram {
 	uint8_t  reserved[2];  /**< Not quite reserved */
 	uint8_t  data[8];      /**< CAN data bytes */
 	uint32_t timestamp[2]; /**< noted as not implimented in manual version 1.5 (2010-02-22) */
-};
+} __packed;
 
 /* with command = ELLSI_CMD_CTRL
  * and    subcommand = ELLSI_IOCTL_CAN_ID_ADD
@@ -105,7 +106,7 @@ struct ellsi_can_gram {
 struct ellsi_can_id_range {
 	uint32_t start;
 	uint32_t end;
-};
+} __packed;
 
 /* with   subcommand = ELLSI_IOCTL_CAN_SET_BAUDRATE
  *     or subcommand = ELLSI_IOCTL_CAN_GET_BAUDRATE

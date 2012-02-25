@@ -43,6 +43,59 @@ struct ecan_connection_t {
 	_ecan_out out;
 };
 
+typedef struct _ecan_header {
+	uint32_t sequence;   /**< seq num OR zero.
+			If non-zero, the ELLSI-server discards CAN TX telegrams
+			if the sequence number is less or equal to the sequence
+			number of the last CAN TX telegram.
+
+			For the other direction, the ELLSI-server will
+			increment the sequence-element for every telegram send
+			to the ELLSI-client (regardless if CAN RX data, a
+			response to a previous command or a heartbeat).
+			*/
+	uint32_t command;    /**< one of ELLSI_CMD_* */
+	uint32_t subcommand; /**< one of ELLSI_SUBCMD_* or ELLSI_IOCTL_* */
+} _ecan_header;
+
+static int _ecan_send_msg(ecan_connection_t *c,
+		_ecan_header *eh, void *payload, size_t payload_bytes)
+{
+	struct iovec vec[2];
+	struct ellsi_header head = {
+		.magic         = htonl(ELLSI_MAGIC),
+		.seq           = htonl(eh->sequence),
+		.command       = htonl(eh->command),
+		.subcommand    = htonl(eh->subcommand),
+		.payload_bytes = htonl(payload_bytes)
+	};
+
+	vec[0].iov_base = &head
+	vec[0].iov_len  = sizeof(head);
+
+	vec[1].iov_base = payload;
+	vec[1].iov_len  = payload_bytes;
+
+	return writev(c->fd, vec, 2);
+}
+
+int  ecan_canid_add_range(ecan_connection_t *c,
+		uint32_t can_id_start, uint32_t can_id_end)
+{
+	_ecan_header e = {
+		.sequence   = 0,
+		.command    = ELLSI_CMD_CTRL,
+		.subcommand = ELLSI_IOCTL_CAN_ADD_ID
+	};
+
+	struct ellsi_can_id_range payload = {
+		.start = htonl(can_id_start),
+		.end   = htonl(can_id_end)
+	};
+
+	return _ecan_send_msg(c, e, &payload, sizeof(payload));
+}
+
 ecan_connection_t *ecan_connect_to_fd(int udp_sock_fd)
 {
 	int r;
@@ -64,6 +117,38 @@ err_ein:
 err_con_alloc:
 	return NULL;
 
+}
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+ecan_connection_t *ecan_connect(char *host, uint16_t port)
+{
+	char service[6];
+	sprintf(service, "%u", port);
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_DGRAM,
+		.ai_flags = AI_NUMERICSERV | AI_ADDRCONFIG
+	};
+
+	struct addrinfo *res;
+
+	int ret = getaddrinfo(host, service, &hints, &res);
+	if (ret) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret));
+		return NULL;
+	}
+
+	int fd = socket(res->ai_family, res->ai_socktype, 0);
+	if (fd < 0)
+		return NULL;
+
+	ret = connect(fd, res->ai_addr, res->ai_addrlen);
+	if (ret < 0)
+		return NULL;
+
+	return ecan_connect_to_fd(fd);
 }
 
 void ecan_disconnect(ecan_connection_t *e)
