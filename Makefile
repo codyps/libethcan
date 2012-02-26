@@ -1,6 +1,8 @@
 CFLAGS = -g -Wall -MMD -std=gnu99 -pthread -fPIC -pie
 LDFLAGS=
 
+HOST_CFLAGS = -g -Wall -MMD
+HOSTCC = gcc
 CC     = gcc
 CCLD   = gcc
 RM     = rm -rf
@@ -13,6 +15,7 @@ ifndef V
 	QUIET_LD   = @ echo '    ' LD $@;
 	QUIET_AR   = @ echo '    ' AR $@;
 	QUIET_CCLD = @ echo '    ' CCLD $@;
+	QUIET_HOSTCC=@ echo '    ' HOSTCC $@;
 endif
 
 LIBNAME = libethcan
@@ -44,5 +47,7 @@ clean :
 %.elf :
 	$(QUIET_LD)$(CCLD) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
+bpgen : bpgen.c
+	$(QUIET_HOSTCC)$(HOSTCC) $(HOST_CFLAGS) -o $@ $^
 
 -include $(wildcard *.d)
