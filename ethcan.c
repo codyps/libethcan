@@ -153,6 +153,8 @@ ecan_connection_t *ecan_connect(char *host, uint16_t port)
 	if (ret < 0)
 		return NULL;
 
+	freeaddrinfo(res);
+
 	return ecan_connect_to_fd(fd);
 }
 
