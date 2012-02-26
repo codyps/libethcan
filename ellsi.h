@@ -58,7 +58,7 @@ struct ellsi_header {
 /**
  * with command = ELLSI_CMD_REGISTERX
  */
-typedef ellsi_register_x {
+struct ellsi_register_x {
 	uint32_t heartbeat_interval;
 	/**<
 	  ELLSI server heartbeat interval in ms.  Use 0 for default value

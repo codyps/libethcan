@@ -1,6 +1,11 @@
 #include <pthread.h>
 #include <stdlib.h>
+#include <sys/uio.h> /* iovec */
+#include <arpa/inet.h> /* htonl */
+#include <stdio.h> /* sprintf */
 #include "ethcan.h"
+#include "ellsi.h"
+
 
 #define ECAN_QUEUE_IN_SIZE  4096
 #define ECAN_QUEUE_OUT_SIZE 4096
@@ -64,13 +69,13 @@ static int _ecan_send_msg(ecan_connection_t *c,
 	struct iovec vec[2];
 	struct ellsi_header head = {
 		.magic         = htonl(ELLSI_MAGIC),
-		.seq           = htonl(eh->sequence),
+		.sequence      = htonl(eh->sequence),
 		.command       = htonl(eh->command),
 		.subcommand    = htonl(eh->subcommand),
 		.payload_bytes = htonl(payload_bytes)
 	};
 
-	vec[0].iov_base = &head
+	vec[0].iov_base = &head;
 	vec[0].iov_len  = sizeof(head);
 
 	vec[1].iov_base = payload;
@@ -85,7 +90,7 @@ int  ecan_canid_add_range(ecan_connection_t *c,
 	_ecan_header e = {
 		.sequence   = 0,
 		.command    = ELLSI_CMD_CTRL,
-		.subcommand = ELLSI_IOCTL_CAN_ADD_ID
+		.subcommand = ELLSI_IOCTL_CAN_ID_ADD
 	};
 
 	struct ellsi_can_id_range payload = {
@@ -93,7 +98,7 @@ int  ecan_canid_add_range(ecan_connection_t *c,
 		.end   = htonl(can_id_end)
 	};
 
-	return _ecan_send_msg(c, e, &payload, sizeof(payload));
+	return _ecan_send_msg(c, &e, &payload, sizeof(payload));
 }
 
 ecan_connection_t *ecan_connect_to_fd(int udp_sock_fd)
