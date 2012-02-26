@@ -132,7 +132,6 @@ int  read_term(FILE *f, term_t *res)
 {
 	int c = next_token(f);
 
-	printf("term: '%c'\n", c);
 	if (c == '(') {
 		push_token(c, f);
 		res->type  = SEXPR;
