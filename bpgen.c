@@ -183,23 +183,27 @@ sexpr_t *read_sexpr(FILE *f)
 	return s;
 }
 
-void print_sexpr(sexpr_t *s, FILE *f);
-void print_term(term_t *t, FILE *f)
+void print_sexpr(sexpr_t *s, FILE *f, unsigned tab);
+void print_term(term_t *t, FILE *f, unsigned tab)
 {
 	if (t->type == ATOM) {
-		fprintf(f, "<%s>", t->atom);
+		fprintf(f, " %s ", t->atom);
 	} else if (t->type == SEXPR) {
-		print_sexpr(t->sexpr, f);
+		putc('\n', f);
+		print_sexpr(t->sexpr, f, tab+1);
 	} else {
 		ERROR("unk term type.");
 	}
 }
 
-void print_sexpr(sexpr_t *s, FILE *f)
+void print_sexpr(sexpr_t *s, FILE *f, unsigned tab)
 {
+	unsigned i;
+	for (i = 0; i < tab; i++)
+		putc(' ', f);
 	putc('[', f);
 	while(s) {
-		print_term(&s->term, f);
+		print_term(&s->term, f, tab);
 		s = s->next;
 	}
 	putc(']', f);
@@ -227,7 +231,7 @@ void free_sexpr(sexpr_t *s)
 int main(int argc, char **argv)
 {
 	sexpr_t *s = read_sexpr(stdin);
-	print_sexpr(s, stdout);
+	print_sexpr(s, stdout, 0);
 	putc('\n', stdout);
 	free_sexpr(s);
 	return 0;
