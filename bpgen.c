@@ -1,9 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include "list.h"
 
-typedef char    atom_t;
 typedef struct sexpr_t sexpr_t;
 typedef sexpr_t slist_t;
+
+typedef struct atom_t {
+	size_t len;
+	char   val[];
+} atom_t;
 
 typedef struct term_t {
 	int type;
@@ -13,6 +18,7 @@ typedef struct term_t {
 	};
 	unsigned lineno;
 } term_t;
+
 typedef struct sexpr_t {
 	struct sexpr_t *next;
 	struct term_t  term;
@@ -38,7 +44,7 @@ enum {
 
 #define ERROR(...) do {					\
 	fflush(stdout);					\
-	fprintf(stderr, "[%s:%zu]: ", __FILE__, __LINE__);	\
+	fprintf(stderr, "[%s:%d]: ", __FILE__, __LINE__);	\
 	fprintf(stderr, __VA_ARGS__);			\
 	putc('\n', stderr);				\
 	fflush(stderr);					\
@@ -106,23 +112,24 @@ int peek_token(FILE *f)
 #define INIT_ATOM_SZ 22
 atom_t  *read_atom(FILE *f)
 {
-	char  *p = xmalloc(INIT_ATOM_SZ);
 	size_t l = 0, m = INIT_ATOM_SZ;
+	atom_t  *p = xmalloc(offsetof(typeof(*p), val[m]));
 
 	for (;;) {
 		int c = getc(f);
-		if (c == ' ' || c == ')' || c == '\n' || c == '\t') {
+		if (c == ' ' || c == ')' || c == '}' || c == '\n' || c == '\t') {
 			ungetc(c, f);
-			p[l] = '\0';
+			p->val[l] = '\0';
+			p->len = l;
 			return p;
 		}
 
 		if (l + 2 > m) {
 			m *= 2;
-			p = xrealloc(p, m);
+			p = xrealloc(p, offsetof(typeof(*p), val[m]));
 		}
 
-		p[l] = c;
+		p->val[l] = c;
 		l++;
 	}
 }
@@ -187,7 +194,7 @@ void print_sexpr(sexpr_t *s, FILE *f, unsigned tab);
 void print_term(term_t *t, FILE *f, unsigned tab)
 {
 	if (t->type == ATOM) {
-		fprintf(f, " %s ", t->atom);
+		fprintf(f, " %s ", t->atom->val);
 	} else if (t->type == SEXPR) {
 		putc('\n', f);
 		print_sexpr(t->sexpr, f, tab+1);
@@ -227,6 +234,18 @@ void free_sexpr(sexpr_t *s)
 		s = t;
 	}
 }
+
+struct proto {
+	char *proto_name;
+	struct list_head struct_list;
+	struct list_head enum_list;
+};
+
+struct sexpr_callbacks {
+	int (*start_list)(void *ctx);
+	int (*end_list)(void *ctx);
+	int (*item)(void *ctx, const char *item_val, size_t item_len);
+};
 
 int main(int argc, char **argv)
 {
