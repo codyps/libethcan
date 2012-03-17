@@ -1,13 +1,13 @@
 (proto ellsi
-	(struct header
+	(struct header (
 		(be32 magic (always 0x454c5349))
 		(be32 sequence (default 0))
 		(be32 command)
 		(be32 payload_len (follower-bytes))
 		(be32 subcommand)
 		(array byte 8)
-	)
-	(struct register_x_payload
+	))
+	(struct register_x_payload (
 		(be32 heartbeat_interval)
 		(be32 client_dead_multiplier)
 		(be32 can_tx_queue_sz (restrict (range 0 2048))
@@ -22,35 +22,35 @@
 		(be32 send_accum_interval (default 0)
 					  (unused))
 		(array be32 8)
-	)
-	(struct can_telegram
+	))
+	(struct can_telegram (
 		(be32 id)
 		(byte len)
 		(byte msg_lost)
 		(array byte 2)
 		(array byte 8 data)
 		(array be32 2)
-	)
-	(struct can_id_range
+	))
+	(struct can_id_range (
 		(be32 start)
 		(be32 end)
-	)
-	(struct last_state
+	))
+	(struct last_state (
 		(be32  last_command)
 		(sbe32 last_subcommand)
 		(sbe32 last_state)
 		(be32 last_rx_seq)
 		(array be32 4)
-	)
+	))
 
-	(enum cmd
+	(enum cmd (
 		(nop)
 		(can_telegram)
 		(heartbeat)
 		(ctrl)
 		(register)
 		(registerx)
-	)
+	))
 
 	(enum ioctl
 		(nop)
