@@ -73,54 +73,48 @@ int next_token(FILE *f)
 char  *read_atom(FILE *f, size_t *len)
 {
 	size_t l = 0, m = INIT_ATOM_SZ;
-	atom_t  *p = xmalloc(offsetof(typeof(*p), val[m]));
+	char  *p = xmalloc(m);
 
 	for (;;) {
 		int c = getc(f);
 		if (c == ' ' || c == ')' || c == '}' || c == '\n' || c == '\t') {
 			ungetc(c, f);
-			p->val[l] = '\0';
-			p->len = l;
+			p[l] = '\0';
 			return p;
 		}
 
 		if (l + 2 > m) {
 			m *= 2;
-			p = xrealloc(p, offsetof(typeof(*p), val[m]));
+			p = xrealloc(p, m);
 		}
 
-		p->val[l] = c;
+		p[l] = c;
 		l++;
 	}
 }
 
-#define EAL(...) ERROR_AT_LINE(lineno, charno, __VA_ARGS__)
-#define NT()	 token = next_token(f)
-
-#define PUSH_STATE(st) 
-
 
 #define STACK_DEF(name, type) struct name##_stack { size_t p, m; type *s; }
 #define STACK_INIT(it, start_val)  ({					\
+		int __r__ = 0;						\
 		(it)->p = 0; (it)->m = (start_val);			\
 		(it)->s = malloc(sizeof(*((it)->s)) * (it)->m);		\
-		int __r__ = 0;						\
 		if (!(it)->s)						\
 			__r__ = -1;					\
 		__r__;							\
-	)}
+	})
 
-#define _STACK_PUSH(it, val) do {
-			(it)->s[(it)->p] = val;							\
-			(it)->p ++;								\
+#define _STACK_PUSH(it, val) do {		\
+			(it)->s[(it)->p] = val;	\
+			(it)->p ++;		\
 	} while(0)
 #define STACK_PUSH(it, val) ({									\
 		int __r__ = 0;									\
-		if ((it)->p + 1 < (it)->m) {							\
+		if ((it)->p < (it)->m) {							\
 			_STACK_PUSH(it, val);							\
 		} else {									\
 			size_t __nm__ = (it)->m * 2;						\
-			typeof((it)->s) __ns__ = realloc((it)->s, sizeof(*((it)->s) * __nm__);	\
+			typeof((it)->s) __ns__ = realloc((it)->s, sizeof(*((it)->s) * __nm__));	\
 			if (!__ns__)								\
 				__r__ = -1;							\
 			else {									\
@@ -134,15 +128,23 @@ char  *read_atom(FILE *f, size_t *len)
 
 #define STACK_HAS_ELEM(it) (!!(it)->p)
 
+#define _STACK_DISCARD(it) ((it)->p--)
 #define _STACK_POP(it) ( (it)->s[--((it)->p)] )
 #define _STACK_PEEK(it) ( (it)->s[((it)->p)-1] )
 
+struct sexpr_callbacks {
+	int (*start_list)(void *ctx);
+	int (*end_list)(void *ctx);
+	int (*item)(void *ctx, const char *item_val, size_t item_len);
+};
+
+#define EAL(...) ERROR_AT_LINE(lineno, charno, __VA_ARGS__)
+#define NT()	 token = next_token(f)
 int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 {
 	enum e_s {
-		P_SEXPR = -1024,
+		P_SEXPR,
 		P_SLIST,
-		P_TERM,
 		P_ATOM,
 		P_CLOSE_SEXPR
 	};
@@ -154,14 +156,14 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 	int token = next_token(f);
 
 	do {
-		switch(_STACK_PEEK(ss)) {
+		switch(_STACK_POP(ss)) {
 		case P_SEXPR:
 			if (token != '(') {
 				EAL("sexpr did not start with '(', has '%c'", token);
 				return -1;
 			}
 			c->start_list(ctx);
-			STACK_PUSH(ss, P_CLOSE_PAREN);
+			STACK_PUSH(ss, P_CLOSE_SEXPR);
 			STACK_PUSH(ss, P_SLIST);
 			NT();
 			break;
@@ -170,13 +172,13 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 				STACK_PUSH(ss, P_SLIST);
 				STACK_PUSH(ss, P_SEXPR);
 			} else if (token == ')') {
-				_STACK_POP(ss)
+				/* nothing */
 			} else {
 				STACK_PUSH(ss, P_SLIST);
 				STACK_PUSH(ss, P_ATOM);
 			}
 			break;
-		case P_ATOM:
+		case P_ATOM: {
 			size_t len;
 			char *a = read_atom(f, &len);
 			if (!a) {
@@ -184,15 +186,13 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 				return -1;
 			}
 			c->item(ctx, a, len);
-			_STACK_POP(ss);
-			break;
+		} break;
 		case P_CLOSE_SEXPR:
 			if (token != ')') {
 				EAL("sexpr did not end with ')', has '%c'", token);
 				return -1;
 			}
 			NT();
-			_STACK_POP(ss);
 			c->end_list(ctx);
 		}
 	} while(STACK_HAS_ELEM(ss));
@@ -200,77 +200,6 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 	return 0;
 }
 
-void print_sexpr(sexpr_t *s, FILE *f, unsigned tab);
-void print_term(term_t *t, FILE *f, unsigned tab)
-{
-	if (t->type == ATOM) {
-		fprintf(f, " %s ", t->atom->val);
-	} else if (t->type == SEXPR) {
-		putc('\n', f);
-		print_sexpr(t->sexpr, f, tab+1);
-	} else {
-		ERROR("unk term type.");
-	}
-}
-
-void print_sexpr(sexpr_t *s, FILE *f, unsigned tab)
-{
-	unsigned i;
-	for (i = 0; i < tab; i++)
-		putc(' ', f);
-	putc('[', f);
-	while(s) {
-		print_term(&s->term, f, tab);
-		s = s->next;
-	}
-	putc(']', f);
-}
-
-void free_sexpr(sexpr_t *s);
-void free_term(term_t *t)
-{
-	if (t->type == ATOM)
-		free(t->atom);
-	else if (t->type == SEXPR)
-		free_sexpr(t->sexpr);
-}
-
-void free_sexpr(sexpr_t *s)
-{
-	while(s) {
-		sexpr_t *t = s->next;
-		free_term(&s->term);
-		free(s);
-		s = t;
-	}
-}
-
-#define sexpr_for_each_term(term, sexpr) \
-	for(term = sexpr->term; term; term = container_of(term, typeof(sexpr), term)->next)
-
-#define sexpr_for_each_term_rest(term, sexpr) \
-	for((sexpr->next) && (term = sexpr->next->term) || term = NULL; term; term = container_of(term, typeof(sexpr), term)->next)
-
-#define sexpr_fst_term(sexpr) ((sexpr)->term)
-#define sexpr_fst_term_as_atom(sexpr) ((sexpr)->term.atom)
-#define sexpr_has_snd_term(sexpr) ((sexpr)->term && (sexp)r->term->term)
-#define sexpr_snd_term(sexpr)   ({ term_t *t; if ((sexpr)->next) t = sexpr->term->term else t = NULL; t })
-#define sexpr_snd_term_as_atom(sexpr) term_as_atom(sexpr_snd_term(sexpr))
-#define term_is_atom(term) (term->type == ATOM)
-#define term_as_atom(term) (term->atom)
-#define sexpr_fst_term_is_atom(sexpr) (sexpr->term.type == ATOM)
-#define sexpr_fst_term_as_atom_has_value(sexpr, value) (sexpr_term_is_atom(sexpr) && !strcmp(term_as_atom(term).val, value))
-
-struct proto {
-	char *proto_name;
-	struct list_head struct_list;
-	struct list_head enum_list;
-};
-
-struct proto_struct {
-	struct list_head l;
-
-};
 
 
 #define _h(...) do {			\
@@ -406,15 +335,48 @@ int generate_proto(sexpr_t *p)
 	_h("#endif /* _%s_H */", proto_name);
 }
 
-struct sexpr_callbacks {
-	int (*start_list)(void *ctx);
-	int (*end_list)(void *ctx);
-	int (*item)(void *ctx, const char *item_val, size_t item_len);
+struct proto {
+	char *name;
+	struct list_head struct_list;
+	struct list_head enum_list;
+};
+
+struct proto_struct {
+	struct list_head l;
+	char *name;
+	struct list_head members;
+};
+
+struct proto_enum {
+	struct list_head l;
+	char *name;
+	struct list_head evals;
+};
+
+enum pr_state {
+	S_INIT,
+	S_PROTO,
+	S_STRUCT,
+	S_ENUM,
+	S_,
+	S_
+};
+
+struct cb_state {
+	struct proto p;
+	STACK_DEF(z, struct list_head) head_stack;
+	STACK_DEF(w, enum pr_state)    st_stack;
 };
 
 int main(int argc, char **argv)
 {
-	sexpr_t *s = read_sexpr(stdin);
+	struct sexpr_callbacks cb = {
+		.start_list = bp_sl,
+		.end_list   = bp_el,
+		.item       = bp_item
+	};
+
+	sexpr_t *s = read_sexpr(&cb, stdin);
 	print_sexpr(s, stdout, 0);
 	putc('\n', stdout);
 	free_sexpr(s);

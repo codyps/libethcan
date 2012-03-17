@@ -1,7 +1,7 @@
 CFLAGS = -g -Wall -MMD -std=gnu99 -pthread -fPIC -pie
 LDFLAGS=
 
-HOST_CFLAGS = -g -Wall -MMD
+HOST_CFLAGS = -g -Wall -MMD -std=gnu1x
 HOSTCC = gcc
 CC     = gcc
 CCLD   = gcc
@@ -48,6 +48,6 @@ clean :
 	$(QUIET_LD)$(CCLD) $(CFLAGS) $(LDFLAGS) -o $@ $^
 
 bpgen : bpgen.c
-	$(QUIET_HOSTCC)$(HOSTCC) $(HOST_CFLAGS) -o $@ $^
+	$(QUIET_HOSTCC)$(HOSTCC) $(HOST_CFLAGS) -o $@ $<
 
 -include $(wildcard *.d)
