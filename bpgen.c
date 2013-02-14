@@ -50,7 +50,7 @@ slist := ws
 
 static size_t lineno, charno;
 
-int next_token(FILE *f)
+static int next_token(FILE *f)
 {
 	int c;
 	for(;;) {
@@ -70,7 +70,7 @@ int next_token(FILE *f)
 }
 
 #define INIT_ATOM_SZ 22
-char  *read_atom(FILE *f, size_t *len)
+static char  *read_atom(FILE *f, size_t *len)
 {
 	size_t l = 0, m = INIT_ATOM_SZ;
 	char  *p = xmalloc(m);
@@ -108,6 +108,7 @@ char  *read_atom(FILE *f, size_t *len)
 			(it)->s[(it)->p] = val;	\
 			(it)->p ++;		\
 	} while(0)
+
 #define STACK_PUSH(it, val) ({									\
 		int __r__ = 0;									\
 		if ((it)->p < (it)->m) {							\
@@ -127,20 +128,21 @@ char  *read_atom(FILE *f, size_t *len)
 	})
 
 #define STACK_HAS_ELEM(it) (!!(it)->p)
-
-#define _STACK_DISCARD(it) ((it)->p--)
-#define _STACK_POP(it) ( (it)->s[--((it)->p)] )
-#define _STACK_PEEK(it) ( (it)->s[((it)->p)-1] )
+#define _STACK_DISCARD(it) do { ((it)->p--); } while(0)
+#define _STACK_POP(it)  do { (it)->s[--((it)->p)]; } while(0)
+#define _STACK_PEEK(it) do { (it)->s[((it)->p)-1]; } while(0)
+#define _STACK_POKE(it, val) do { (it)->s[((it)->p)-1] = val; } while(0)
+#define STACK_DESTROY(it) do { free((it)->s); (it)->m = (it)->p = 0; } while(0)
 
 struct sexpr_callbacks {
-	int (*start_list)(void *ctx);
-	int (*end_list)(void *ctx);
-	int (*item)(void *ctx, const char *item_val, size_t item_len);
+	int (*start_list)(void *ctx, unsigned idx);
+	int (*end_list)(void *ctx, unsigned total_len);
+	int (*item)(void *ctx, unsigned idx, const char *item_val, size_t item_len);
 };
 
 #define EAL(...) ERROR_AT_LINE(lineno, charno, __VA_ARGS__)
 #define NT()	 token = next_token(f)
-int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
+static int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 {
 	enum e_s {
 		P_SEXPR,
@@ -149,9 +151,15 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 		P_CLOSE_SEXPR
 	};
 
+	STACK_DEF(q, unsigned) _cts, *cts = &_cts;
+
 	STACK_DEF(x, enum e_s) _ss, *ss = &_ss;
+
 	STACK_INIT(ss, 20);
 	STACK_PUSH(ss, P_SEXPR);
+
+	STACK_INIT(ctx, 5);
+	STACK_PUSH(ctx, 0);
 
 	int token = next_token(f);
 
@@ -162,7 +170,9 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 				EAL("sexpr did not start with '(', has '%c'", token);
 				return -1;
 			}
-			c->start_list(ctx);
+			c->start_list(ctx, _STACK_PEEK(cts));
+			_STACK_POKE(cts, _STACK_PEEK(cts) + 1);
+			STACK_PUSH(cts, 0);
 			STACK_PUSH(ss, P_CLOSE_SEXPR);
 			STACK_PUSH(ss, P_SLIST);
 			NT();
@@ -185,7 +195,8 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 				EAL("allocation failed.");
 				return -1;
 			}
-			c->item(ctx, a, len);
+			c->item(ctx, _STACK_PEEK(cts), a, len);
+			_STACK_POKE(cts, _STACK_PEEK(cts) + 1);
 		} break;
 		case P_CLOSE_SEXPR:
 			if (token != ')') {
@@ -193,14 +204,16 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 				return -1;
 			}
 			NT();
-			c->end_list(ctx);
+			c->end_list(ctx, _STACK_PEEK(cts));
+			_STACK_DISCARD(cts);
 		}
 	} while(STACK_HAS_ELEM(ss));
 
+	STACK_DESTROY(ss);
+	STACK_DESTROY(cts);
+
 	return 0;
 }
-
-
 
 #define _h(...) do {			\
 	unsigned i;			\
@@ -228,6 +241,8 @@ int read_sexpr(struct sexpr_callbacks *c, void *ctx, FILE *f)
 #define _b_out() do { _h_out(); _c_out() } while(0)
 
 #define BPGEN_VER_STR "bpgen-[i have to set this up]"
+
+#if 0
 
 typedef struct file_emitter {
 	FILE *h, c;
@@ -335,6 +350,8 @@ int generate_proto(sexpr_t *p)
 	_h("#endif /* _%s_H */", proto_name);
 }
 
+#endif
+
 struct proto {
 	char *name;
 	struct list_head struct_list;
@@ -350,23 +367,96 @@ struct proto_struct {
 struct proto_enum {
 	struct list_head l;
 	char *name;
-	struct list_head evals;
+	struct list_head vals;
 };
 
 enum pr_state {
 	S_INIT,
 	S_PROTO,
+	S_ENUM_OR_STRUCT,
 	S_STRUCT,
 	S_ENUM,
-	S_,
-	S_
+	/* can be member of "<enum>" or "<struct>" */
+	S_MEMBER, /* peek back by 1 for full state */
+	/* could be attr of "<enum/struct> <member>" or "<enum/struct>" */
+	S_ATTR    /* peek back by 1 or 2 for full state */
 };
 
-struct cb_state {
-	struct proto p;
+struct bp_ctx {
+	struct proto *p;
 	STACK_DEF(z, struct list_head) head_stack;
 	STACK_DEF(w, enum pr_state)    st_stack;
 };
+
+static inline void proto_init(struct proto *p)
+{
+	p->name = NULL;
+	list_init(&p->struct_list);
+	list_init(&p->enum_list);
+}
+
+static int bp_sl(void *ctx_v, unsigned idx)
+{
+	struct bp_ctx *ctx = ctx_v;
+	switch(_STACK_PEEK(ctx->st_stack)) {
+	case S_INIT:
+		/* we just started the proto list */
+		STACK_PUSH(ctx->st_stack, S_PROTO);
+		break;
+	case S_PROTO:
+		/* started a list inside proto, could be a enum or struct */
+		STACK_PUSH(ctx->st_stack, S_ENUM_OR_STRUCT);
+		break;
+	case S_ENUM_OR_STRUCT:
+		/* the hell? we need to know if it is an enum or struct, this
+		 * won't do */
+		EAL("must be 'enum' or 'struct'");
+		break;
+	case S_STRUCT:
+		/* members? attrs? */
+		break;
+	case S_ENUM:
+		/* members? attrs? who designed this software :(  */
+		break;
+	case S_MEMBER:
+		/* ??? */
+		break;
+	case S_ATTR:
+		/* ??? */
+		break;
+	}
+}
+
+static int bp_el(void *ctx_v, unsigned total_len)
+{
+	struct bp_ctx *ctx = ctx_v;
+
+	/* XXX: need to use this at all? */
+	_STACK_DISCARD(ctx->st_stack);
+}
+
+static int bp_item(void *ctx_v, unsigned idx, char *item, size_t len)
+{
+	struct bp_ctx *ctx = ctx_v;
+	switch(_STACK_PEEK(ctx->st_stack)) {
+	case S_INIT:
+		/* oh god */
+		break;
+	case S_PROTO:
+		/* is this the first time? who knows. */
+		break;
+	case S_
+	}
+}
+
+static int bp_ctx_init(struct bp_ctx *s, struct proto *p)
+{
+	s->p = p;
+	int r = STACK_INIT(&s->head_stack);
+	if (r)
+		return r;
+	return STACK_INIT(&s->st_stack);
+}
 
 int main(int argc, char **argv)
 {
@@ -376,9 +466,11 @@ int main(int argc, char **argv)
 		.item       = bp_item
 	};
 
-	sexpr_t *s = read_sexpr(&cb, stdin);
-	print_sexpr(s, stdout, 0);
-	putc('\n', stdout);
-	free_sexpr(s);
+	struct bp_ctx s;
+	struct proto p;
+	proto_init(&p);
+	bp_ctx_init(&s, &p);
+
+	int r = read_sexpr(&cb, &s, stdin);
 	return 0;
 }
